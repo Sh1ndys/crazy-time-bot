@@ -25,6 +25,8 @@ RESULT_MAP = {
     "cash hunt": "CashHunt",
     "crazytime": "CrazyTime",
     "crazy time": "CrazyTime",
+    "crazybonus": "CrazyTime",   # реальное название в API slotyi.com
+    "crazy bonus": "CrazyTime",
 }
 
 
