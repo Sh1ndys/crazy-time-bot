@@ -50,13 +50,11 @@ RESULT_MAP = {
 def normalize_result(spin):
     data = spin.get("data", spin)
     result = data.get("result", {})
-    outcome = result.get("outcome", {})
-    # Берём wheelSector из outcome
-    sector = str(outcome.get("wheelSector") or "").strip().lower()
+    # wheelSector прямо в result
+    sector = str(result.get("wheelSector") or "").strip().lower()
     if not sector:
-        # Fallback: из wheelResult
-        wheel = result.get("wheelResult", {})
-        sector = str(wheel.get("wheelSector") or "").strip().lower()
+        outcome = result.get("outcome", {})
+        sector = str(outcome.get("wheelSector") or "").strip().lower()
     return RESULT_MAP.get(sector)
 
 
