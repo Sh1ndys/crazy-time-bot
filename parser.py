@@ -29,37 +29,19 @@ RESULT_MAP = {
 
 
 def normalize_result(spin):
-    """
-    Структура от slotyi.com:
-    {
-      "data": {
-        "result": {
-          "outcome": {
-            "topSlot": {"wheelSector": "Pachinko"},   # бонусы
-            "wheelResult": {"type": "WinningNumber", "wheelSector": "1"}  # числа
-          }
-        }
-      }
-    }
-    """
     data = spin.get("data") or spin
     result = data.get("result") or {}
     outcome = result.get("outcome") or {}
 
-    # Для бонусных раундов берём topSlot.wheelSector
-    top_slot = outcome.get("topSlot") or {}
-    sector = str(top_slot.get("wheelSector") or "").strip().lower()
-    if sector and sector in RESULT_MAP:
-        return RESULT_MAP[sector]
-
-    # Для чисел берём wheelResult.wheelSector
+    # Правая колонка — реальный результат спина
     wheel_result = outcome.get("wheelResult") or {}
     sector = str(wheel_result.get("wheelSector") or "").strip().lower()
     if sector and sector in RESULT_MAP:
         return RESULT_MAP[sector]
 
-    # Fallback: прямо в result
-    sector = str(result.get("wheelSector") or "").strip().lower()
+    # Fallback: topSlot (левая колонка — только если wheelResult нет)
+    top_slot = outcome.get("topSlot") or {}
+    sector = str(top_slot.get("wheelSector") or "").strip().lower()
     if sector and sector in RESULT_MAP:
         return RESULT_MAP[sector]
 
