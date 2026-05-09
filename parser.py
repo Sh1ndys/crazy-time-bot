@@ -47,25 +47,17 @@ RESULT_MAP = {
 }
 
 
-def normalize_result(spin: dict) -> str | None:
-    """Извлечь и нормализовать результат спина"""
-    result = spin.get("result", {})
-    # Берём wheelSector как основной источник
-    sector = str(result.get("wheelSector") or "").strip().lower()
-    if sector:
-        mapped = RESULT_MAP.get(sector)
-        if mapped:
-            return mapped
-
-    # Fallback: outcome
-    outcome = str(result.get("outcome") or "").strip().lower()
-    # "WinningNumber" — значит смотрим wheelSector
-    # Если outcome содержит название бонуса
-    for key, val in RESULT_MAP.items():
-        if key in outcome:
-            return val
-
-    return None
+def normalize_result(spin):
+    data = spin.get("data", spin)
+    result = data.get("result", {})
+    outcome = result.get("outcome", {})
+    # Берём wheelSector из outcome
+    sector = str(outcome.get("wheelSector") or "").strip().lower()
+    if not sector:
+        # Fallback: из wheelResult
+        wheel = result.get("wheelResult", {})
+        sector = str(wheel.get("wheelSector") or "").strip().lower()
+    return RESULT_MAP.get(sector)
 
 
 class TracksParser:
