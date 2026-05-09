@@ -30,38 +30,40 @@ RESULT_MAP = {
 
 def normalize_result(spin):
     """
-    Структура spins от slotyi.com:
+    Структура от slotyi.com:
     {
       "data": {
         "result": {
-          "wheelSector": "CashHunt"  # или "1", "2", "5", "10" и т.д.
+          "outcome": {
+            "topSlot": {"wheelSector": "Pachinko"},   # бонусы
+            "wheelResult": {"type": "WinningNumber", "wheelSector": "1"}  # числа
+          }
         }
-      },
-      "settledAt": "...",
-      "id": "..."
+      }
     }
     """
-    # Берём data если есть, иначе сам spin
     data = spin.get("data") or spin
     result = data.get("result") or {}
-    
-    # wheelSector прямо в result
-    sector = str(result.get("wheelSector") or "").strip().lower()
-    if sector:
-        mapped = RESULT_MAP.get(sector)
-        if mapped:
-            return mapped
-    
-    # Fallback: ищем в outcome
     outcome = result.get("outcome") or {}
-    if isinstance(outcome, dict):
-        sector = str(outcome.get("wheelSector") or "").strip().lower()
-        if sector:
-            mapped = RESULT_MAP.get(sector)
-            if mapped:
-                return mapped
-    
-    logger.debug(f"Unknown result structure: {result}")
+
+    # Для бонусных раундов берём topSlot.wheelSector
+    top_slot = outcome.get("topSlot") or {}
+    sector = str(top_slot.get("wheelSector") or "").strip().lower()
+    if sector and sector in RESULT_MAP:
+        return RESULT_MAP[sector]
+
+    # Для чисел берём wheelResult.wheelSector
+    wheel_result = outcome.get("wheelResult") or {}
+    sector = str(wheel_result.get("wheelSector") or "").strip().lower()
+    if sector and sector in RESULT_MAP:
+        return RESULT_MAP[sector]
+
+    # Fallback: прямо в result
+    sector = str(result.get("wheelSector") or "").strip().lower()
+    if sector and sector in RESULT_MAP:
+        return RESULT_MAP[sector]
+
+    logger.debug(f"Unknown: {outcome}")
     return None
 
 
