@@ -85,14 +85,17 @@ class TracksParser:
                     except Exception:
                         timestamp = datetime.now(tz=timezone.utc)
                     spin_id = str(spin.get("id") or spin.get("transmissionId") or f"{result}_{ts_raw}")
+                    # Считаем серию без бонусов ДО сохранения спина
+                    gap_before = None
+                    if result in {"CoinFlip", "Pachinko", "CashHunt", "CrazyTime"}:
+                        gap_before = self.analyzer.current_bonus_absence()
                     is_new = self.db.save_spin(spin_id, result, timestamp)
                     if is_new:
                         saved += 1
                         self.db.clear_alert_history(result)
-                        if result in {"CoinFlip", "Pachinko", "CashHunt", "CrazyTime"}:
-                            gap = self.analyzer.current_bonus_absence()
-                            if gap > 0:
-                                self.db.save_bonus_gap(gap)
+                        if gap_before is not None:
+                            if gap_before > 0:
+                                self.db.save_bonus_gap(gap_before)
                             self.db.clear_alert_history("__bonus__")
                 logger.info(f"Saved: {saved}, skipped: {skipped}, total in DB: {self.db.get_total_spins()}")
                 if saved > 0:
