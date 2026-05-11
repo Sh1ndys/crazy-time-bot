@@ -495,6 +495,21 @@ async def top_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         s = gap_stats(gaps)
         icon = ICONS.get(event, "🎡")
         lines.append(f"{icon} *{event}*: макс={s['max']} среднее={s['avg']:.1f}")
+
+    bonus_stats = db.get_bonus_gap_stats()
+    current_bonus = analyzer.current_bonus_absence()
+    thresholds = db.get_all_thresholds()
+    bonus_threshold = thresholds.get("__bonus__", 30)
+    lines.append(f"\n🎰 *Серии без любого бонуса:*")
+    lines.append(f"  Сейчас: *{current_bonus}* спинов (порог: {bonus_threshold})")
+    if bonus_stats["count"] > 0:
+        lines.append(f"  Макс за всё время: *{bonus_stats['max']}* спинов")
+        lines.append(f"  Среднее: *{bonus_stats['avg']:.1f}* спинов")
+        lines.append(f"  Всего серий: *{bonus_stats['count']}*")
+        if bonus_stats["top5"]:
+            lines.append(f"  Топ-5: {', '.join(str(g) for g in bonus_stats['top5'])}")
+    else:
+        lines.append(f"  _(статистика накапливается)_")
     await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
 
 
