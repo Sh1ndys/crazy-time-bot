@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from config import BOT_TOKEN, CHAT_IDS, ADMIN_IDS
 from database import Database
 from analyzer import Analyzer, EVENTS, compute_gaps, gap_stats
@@ -72,7 +72,15 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"/reset — обнулить базу данных\n"
             f"/subscribers — список подписчиков\n"
         )
-    await update.message.reply_text(text, parse_mode='Markdown')
+    keyboard = ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("📊 Статистика"), KeyboardButton("🏆 Топ")],
+            [KeyboardButton("📅 За месяц"), KeyboardButton("🔧 Статус")],
+            [KeyboardButton("🎯 По событию"), KeyboardButton("🔔 Пороги")],
+        ],
+        resize_keyboard=True
+    )
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=keyboard)
 
 
 async def unsubscribe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -308,6 +316,22 @@ async def reset_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("❌ Отмена.")
 
 
+async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "📊 Статистика":
+        await stats(update, ctx)
+    elif text == "🏆 Топ":
+        await top_cmd(update, ctx)
+    elif text == "📅 За месяц":
+        await monthly(update, ctx)
+    elif text == "🔧 Статус":
+        await status(update, ctx)
+    elif text == "🎯 По событию":
+        await event_detail(update, ctx)
+    elif text == "🔔 Пороги":
+        await alerts_menu(update, ctx)
+
+
 async def polling_task(app: Application):
     logger.info("Parser task started")
     while True:
@@ -354,6 +378,7 @@ def main():
     app.add_handler(CommandHandler("reset", reset_cmd))
     app.add_handler(CallbackQueryHandler(event_callback, pattern="^event_"))
     app.add_handler(CallbackQueryHandler(reset_callback, pattern="^reset_"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_handler))
     logger.info("Bot started")
     app.run_polling(drop_pending_updates=True)
 
@@ -495,21 +520,6 @@ async def top_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         s = gap_stats(gaps)
         icon = ICONS.get(event, "🎡")
         lines.append(f"{icon} *{event}*: макс={s['max']} среднее={s['avg']:.1f}")
-
-    bonus_stats = db.get_bonus_gap_stats()
-    current_bonus = analyzer.current_bonus_absence()
-    thresholds = db.get_all_thresholds()
-    bonus_threshold = thresholds.get("__bonus__", 30)
-    lines.append(f"\n🎰 *Серии без любого бонуса:*")
-    lines.append(f"  Сейчас: *{current_bonus}* спинов (порог: {bonus_threshold})")
-    if bonus_stats["count"] > 0:
-        lines.append(f"  Макс за всё время: *{bonus_stats['max']}* спинов")
-        lines.append(f"  Среднее: *{bonus_stats['avg']:.1f}* спинов")
-        lines.append(f"  Всего серий: *{bonus_stats['count']}*")
-        if bonus_stats["top5"]:
-            lines.append(f"  Топ-5: {', '.join(str(g) for g in bonus_stats['top5'])}")
-    else:
-        lines.append(f"  _(статистика накапливается)_")
     await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
 
 
