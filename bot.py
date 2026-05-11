@@ -77,6 +77,7 @@ async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             [KeyboardButton("📊 Статистика"), KeyboardButton("🏆 Топ")],
             [KeyboardButton("📅 За месяц"), KeyboardButton("🔧 Статус")],
             [KeyboardButton("🎯 По событию"), KeyboardButton("🔔 Пороги")],
+            [KeyboardButton("✖️ Множители")],
         ],
         resize_keyboard=True
     )
@@ -316,6 +317,24 @@ async def reset_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("❌ Отмена.")
 
 
+async def multipliers_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    stats_data = db.get_multiplier_stats()
+    lines = ["🎰 *Статистика множителей бонусов:*\n"]
+    for event in ["CoinFlip", "Pachinko", "CashHunt", "CrazyTime"]:
+        s = stats_data.get(event, {})
+        icon = ICONS.get(event, "🎡")
+        if s.get("count", 0) == 0:
+            lines.append(f"{icon} *{event}*: _(данные накапливаются)_")
+        else:
+            lines.append(
+                f"{icon} *{event}*:\n"
+                f"  Выпадений: {s['count']} | Среднее: {s['avg_all']:.1f}x\n"
+                f"  Макс за всё время: *{s['max_all']:.0f}x*\n"
+                f"  Макс за 24 часа: *{s['max_24h']:.0f}x*"
+            )
+    await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
+
+
 async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == "📊 Статистика":
@@ -330,6 +349,8 @@ async def button_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await event_detail(update, ctx)
     elif text == "🔔 Пороги":
         await alerts_menu(update, ctx)
+    elif text == "✖️ Множители":
+        await multipliers_cmd(update, ctx)
 
 
 async def polling_task(app: Application):
@@ -376,6 +397,7 @@ def main():
     app.add_handler(CommandHandler("setalert", set_alert))
     app.add_handler(CommandHandler("status", status))
     app.add_handler(CommandHandler("reset", reset_cmd))
+    app.add_handler(CommandHandler("multipliers", multipliers_cmd))
     app.add_handler(CallbackQueryHandler(event_callback, pattern="^event_"))
     app.add_handler(CallbackQueryHandler(reset_callback, pattern="^reset_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_handler))

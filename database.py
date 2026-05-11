@@ -62,6 +62,16 @@ class Database:
                     gap      INTEGER NOT NULL,
                     ended_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS bonus_multipliers (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event      TEXT NOT NULL,
+                    multiplier REAL NOT NULL,
+                    timestamp  DATETIME NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_bm_event     ON bonus_multipliers(event);
+                CREATE INDEX IF NOT EXISTS idx_bm_timestamp ON bonus_multipliers(timestamp);
             """)
         logger.info(f"База данных инициализирована: {self.path}")
 
@@ -219,6 +229,40 @@ class Database:
     def save_bonus_gap(self, gap: int):
         with self._conn() as conn:
             conn.execute("INSERT INTO bonus_gaps (gap) VALUES (?)", (gap,))
+
+    # ── МНОЖИТЕЛИ БОНУСОВ ────────────────────────────────────────────────────
+
+    def save_bonus_multiplier(self, event: str, multiplier: float, timestamp: datetime):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO bonus_multipliers (event, multiplier, timestamp) VALUES (?, ?, ?)",
+                (event, multiplier, timestamp.isoformat())
+            )
+
+    def get_multiplier_stats(self) -> dict:
+        """Статистика множителей за всё время и за последние 24 часа"""
+        from datetime import timedelta
+        since_24h = (datetime.now(tz=timezone.utc) - timedelta(hours=24)).isoformat()
+        result = {}
+        with self._conn() as conn:
+            for event in ["CoinFlip", "Pachinko", "CashHunt", "CrazyTime"]:
+                row_all = conn.execute(
+                    """SELECT COUNT(*) as cnt, MAX(multiplier) as mx, AVG(multiplier) as av
+                       FROM bonus_multipliers WHERE event = ?""",
+                    (event,)
+                ).fetchone()
+                row_24h = conn.execute(
+                    """SELECT MAX(multiplier) as mx
+                       FROM bonus_multipliers WHERE event = ? AND timestamp >= ?""",
+                    (event, since_24h)
+                ).fetchone()
+                result[event] = {
+                    "count":    row_all["cnt"] or 0,
+                    "max_all":  row_all["mx"] or 0,
+                    "avg_all":  row_all["av"] or 0.0,
+                    "max_24h":  row_24h["mx"] or 0,
+                }
+        return result
 
     def get_bonus_gap_stats(self) -> dict:
         with self._conn() as conn:

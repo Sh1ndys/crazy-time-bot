@@ -97,6 +97,12 @@ class TracksParser:
                             if gap_before > 0:
                                 self.db.save_bonus_gap(gap_before)
                             self.db.clear_alert_history("__bonus__")
+                            # Сохраняем множитель бонуса
+                            data = spin.get("data") or spin
+                            outcome = (data.get("result") or {}).get("outcome") or {}
+                            multiplier = outcome.get("maxMultiplier")
+                            if multiplier:
+                                self.db.save_bonus_multiplier(result, float(multiplier), timestamp)
                 logger.info(f"Saved: {saved}, skipped: {skipped}, total in DB: {self.db.get_total_spins()}")
                 if saved > 0:
                     alerts = self._check_all_thresholds()
