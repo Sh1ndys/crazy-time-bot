@@ -89,6 +89,11 @@ class TracksParser:
                     if is_new:
                         saved += 1
                         self.db.clear_alert_history(result)
+                        if result in {"CoinFlip", "Pachinko", "CashHunt", "CrazyTime"}:
+                            gap = self.analyzer.current_bonus_absence()
+                            if gap > 0:
+                                self.db.save_bonus_gap(gap)
+                            self.db.clear_alert_history("__bonus__")
                 logger.info(f"Saved: {saved}, skipped: {skipped}, total in DB: {self.db.get_total_spins()}")
                 if saved > 0:
                     alerts = self._check_all_thresholds()
@@ -184,6 +189,22 @@ class TracksParser:
                     self.db.mark_alert_sent(event, notify_at)
                     break
                 notify_at += ALERT_REPEAT_INTERVAL
+
+        # Проверка серии без любого бонуса
+        bonus_threshold = thresholds.get("__bonus__", 30)
+        bonus_absence = self.analyzer.current_bonus_absence()
+        if bonus_absence >= bonus_threshold:
+            notify_at = bonus_threshold
+            while notify_at <= bonus_absence:
+                if not self.db.was_alert_sent("__bonus__", notify_at):
+                    alerts.append(
+                        f"🎰 *Внимание!* Уже *{bonus_absence}* спинов подряд без бонусов!\n"
+                        f"_(CoinFlip / Pachinko / CashHunt / CrazyTime)_"
+                    )
+                    self.db.mark_alert_sent("__bonus__", notify_at)
+                    break
+                notify_at += ALERT_REPEAT_INTERVAL
+
         return alerts
 
     def _format_alert(self, event, absence, threshold):

@@ -50,6 +50,18 @@ class Database:
                     sent_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (event, absence_count)
                 );
+
+                CREATE TABLE IF NOT EXISTS subscribers (
+                    chat_id    INTEGER PRIMARY KEY,
+                    username   TEXT,
+                    joined_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS bonus_gaps (
+                    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                    gap      INTEGER NOT NULL,
+                    ended_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
             """)
         logger.info(f"База данных инициализирована: {self.path}")
 
@@ -172,3 +184,54 @@ class Database:
         """Очищает историю уведомлений (например, после выпадения события)"""
         with self._conn() as conn:
             conn.execute("DELETE FROM sent_alerts WHERE event = ?", (event,))
+
+    # ── ПОДПИСЧИКИ ────────────────────────────────────────────────────────────
+
+    def add_subscriber(self, chat_id: int, username: str = None):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO subscribers (chat_id, username) VALUES (?, ?)",
+                (chat_id, username)
+            )
+
+    def remove_subscriber(self, chat_id: int):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
+
+    def get_all_subscribers(self) -> list[int]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT chat_id FROM subscribers").fetchall()
+        return [r["chat_id"] for r in rows]
+
+    def is_subscriber(self, chat_id: int) -> bool:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM subscribers WHERE chat_id = ?", (chat_id,)
+            ).fetchone()
+        return row is not None
+
+    def get_subscribers_count(self) -> int:
+        with self._conn() as conn:
+            return conn.execute("SELECT COUNT(*) FROM subscribers").fetchone()[0]
+
+    # ── СЕРИИ БЕЗ БОНУСОВ ────────────────────────────────────────────────────
+
+    def save_bonus_gap(self, gap: int):
+        with self._conn() as conn:
+            conn.execute("INSERT INTO bonus_gaps (gap) VALUES (?)", (gap,))
+
+    def get_bonus_gap_stats(self) -> dict:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt, MAX(gap) as mx, MIN(gap) as mn, AVG(gap) as av FROM bonus_gaps"
+            ).fetchone()
+            top5 = conn.execute(
+                "SELECT gap FROM bonus_gaps ORDER BY gap DESC LIMIT 5"
+            ).fetchall()
+        return {
+            "count": row["cnt"] or 0,
+            "max":   row["mx"] or 0,
+            "min":   row["mn"] or 0,
+            "avg":   row["av"] or 0.0,
+            "top5":  [r["gap"] for r in top5],
+        }

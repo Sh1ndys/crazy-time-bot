@@ -1,5 +1,7 @@
 BOT_TOKEN = "2047277455:AAGwObQa-UPRwulCHH1JJfHjE680_rP7n_I"
 CHAT_IDS = [809607530]
+# Администраторы — только они могут /reset и /setalert
+ADMIN_IDS = [809607530]
 SLOTYI_API = "https://slotyi.com/api/crazytime"
 POLL_INTERVAL = 30
 DEFAULT_THRESHOLDS = {

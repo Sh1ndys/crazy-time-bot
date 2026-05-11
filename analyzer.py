@@ -9,6 +9,7 @@ from database import Database
 logger = logging.getLogger(__name__)
 
 EVENTS = ["1", "2", "5", "10", "CoinFlip", "Pachinko", "CashHunt", "CrazyTime"]
+BONUS_EVENTS = {"CoinFlip", "Pachinko", "CashHunt", "CrazyTime"}
 
 
 def compute_gaps(spins: list[str], event: str) -> list[int]:
@@ -78,6 +79,18 @@ class Analyzer:
         """Сколько спинов прошло без конкретного события"""
         all_abs = self.current_absence_all()
         return all_abs.get(event, 0)
+
+    def current_bonus_absence(self) -> int:
+        """Сколько спинов подряд не было ни одного бонуса"""
+        recent = self.db.get_recent_spins(500)
+        count = 0
+        for spin in recent:
+            if spin["result"] in BONUS_EVENTS:
+                break
+            count += 1
+        else:
+            count = len(recent)
+        return count
 
     def monthly_stats(self) -> dict[str, dict]:
         """
