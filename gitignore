@@ -1,0 +1,7 @@
+*.db
+*.db-shm
+*.db-wal
+bot.log
+__pycache__/
+*.pyc
+*.pyo
