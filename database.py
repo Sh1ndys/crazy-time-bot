@@ -72,6 +72,38 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_bm_event     ON bonus_multipliers(event);
                 CREATE INDEX IF NOT EXISTS idx_bm_timestamp ON bonus_multipliers(timestamp);
+
+                CREATE TABLE IF NOT EXISTS after_series_bonuses (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event          TEXT NOT NULL,
+                    series_length  INTEGER NOT NULL,
+                    multiplier     REAL,
+                    timestamp      DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS sim_settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS sim_active_bets (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event           TEXT NOT NULL,
+                    current_stake   REAL NOT NULL,
+                    bets_remaining  INTEGER NOT NULL,
+                    martingale_step INTEGER NOT NULL DEFAULT 0,
+                    triggered_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS sim_history (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event      TEXT NOT NULL,
+                    stake      REAL NOT NULL,
+                    outcome    TEXT NOT NULL,
+                    profit     REAL NOT NULL,
+                    multiplier REAL,
+                    timestamp  DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
             """)
         logger.info(f"База данных инициализирована: {self.path}")
 
@@ -279,3 +311,134 @@ class Database:
             "avg":   row["av"] or 0.0,
             "top5":  [r["gap"] for r in top5],
         }
+
+    # ── AFTER SERIES BONUSES ──────────────────────────────────────────────────
+
+    def save_after_series_bonus(self, event: str, series_length: int, multiplier: float = None):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO after_series_bonuses (event, series_length, multiplier) VALUES (?, ?, ?)",
+                (event, series_length, multiplier)
+            )
+
+    def get_after_series_stats(self, min_series: int = 30) -> dict:
+        from datetime import timedelta
+        since_24h = (datetime.now(tz=timezone.utc) - timedelta(hours=24)).isoformat()
+        with self._conn() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM after_series_bonuses WHERE series_length >= ?",
+                (min_series,)
+            ).fetchone()[0]
+            rows_all = conn.execute(
+                """SELECT event, COUNT(*) as cnt, AVG(multiplier) as avg_mult, MAX(multiplier) as max_mult
+                   FROM after_series_bonuses WHERE series_length >= ?
+                   GROUP BY event ORDER BY cnt DESC""",
+                (min_series,)
+            ).fetchall()
+            rows_24h = conn.execute(
+                """SELECT event, COUNT(*) as cnt, MAX(multiplier) as max_mult
+                   FROM after_series_bonuses WHERE series_length >= ? AND timestamp >= ?
+                   GROUP BY event ORDER BY cnt DESC""",
+                (min_series, since_24h)
+            ).fetchall()
+        return {
+            "total": total,
+            "all":   [dict(r) for r in rows_all],
+            "24h":   [dict(r) for r in rows_24h],
+        }
+
+    # ── СИМУЛЯТОР ─────────────────────────────────────────────────────────────
+
+    SIM_DEFAULTS = {
+        "balance":          "100000",
+        "stake":            "100",
+        "num_bets":         "10",
+        "strategy":         "flat",
+        "martingale_mult":  "2.0",
+        "martingale_steps": "3",
+        "enabled":          "1",
+    }
+
+    def sim_get(self, key: str) -> str:
+        with self._conn() as conn:
+            row = conn.execute("SELECT value FROM sim_settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else self.SIM_DEFAULTS.get(key, "")
+
+    def sim_set(self, key: str, value: str):
+        with self._conn() as conn:
+            conn.execute("INSERT OR REPLACE INTO sim_settings (key, value) VALUES (?, ?)", (key, value))
+
+    def sim_init_defaults(self):
+        for k, v in self.SIM_DEFAULTS.items():
+            with self._conn() as conn:
+                conn.execute("INSERT OR IGNORE INTO sim_settings (key, value) VALUES (?, ?)", (k, v))
+
+    def sim_get_balance(self) -> float:
+        return float(self.sim_get("balance"))
+
+    def sim_set_balance(self, balance: float):
+        self.sim_set("balance", str(round(balance, 2)))
+
+    def sim_get_active_bets(self) -> list[dict]:
+        with self._conn() as conn:
+            rows = conn.execute("SELECT * FROM sim_active_bets").fetchall()
+        return [dict(r) for r in rows]
+
+    def sim_add_active_bet(self, event: str, stake: float, bets_remaining: int, martingale_step: int = 0):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO sim_active_bets (event, current_stake, bets_remaining, martingale_step) VALUES (?, ?, ?, ?)",
+                (event, stake, bets_remaining, martingale_step)
+            )
+
+    def sim_update_active_bet(self, bet_id: int, bets_remaining: int, current_stake: float, martingale_step: int):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE sim_active_bets SET bets_remaining=?, current_stake=?, martingale_step=? WHERE id=?",
+                (bets_remaining, current_stake, martingale_step, bet_id)
+            )
+
+    def sim_remove_active_bet(self, bet_id: int):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM sim_active_bets WHERE id=?", (bet_id,))
+
+    def sim_has_active_bet(self, event: str) -> bool:
+        with self._conn() as conn:
+            row = conn.execute("SELECT 1 FROM sim_active_bets WHERE event=?", (event,)).fetchone()
+        return row is not None
+
+    def sim_add_history(self, event: str, stake: float, outcome: str, profit: float, multiplier: float = None):
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO sim_history (event, stake, outcome, profit, multiplier) VALUES (?, ?, ?, ?, ?)",
+                (event, stake, outcome, profit, multiplier)
+            )
+
+    def sim_get_history_stats(self) -> dict:
+        from datetime import timedelta
+        since_24h = (datetime.now(tz=timezone.utc) - timedelta(hours=24)).isoformat()
+        with self._conn() as conn:
+            row_all = conn.execute(
+                """SELECT COUNT(*) as total,
+                          SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) as wins,
+                          SUM(profit) as total_profit,
+                          MAX(profit) as best_win,
+                          MIN(profit) as worst_loss
+                   FROM sim_history"""
+            ).fetchone()
+            row_24h = conn.execute(
+                """SELECT COUNT(*) as total,
+                          SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) as wins,
+                          SUM(profit) as total_profit
+                   FROM sim_history WHERE timestamp >= ?""",
+                (since_24h,)
+            ).fetchone()
+        return {
+            "all": dict(row_all),
+            "24h": dict(row_24h),
+        }
+
+    def sim_reset(self):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM sim_active_bets")
+            conn.execute("DELETE FROM sim_history")

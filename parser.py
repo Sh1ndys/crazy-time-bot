@@ -69,6 +69,7 @@ class TracksParser:
     async def fetch_and_process(self):
         self._running = True
         alerts = []
+        spin_data = []  # список (result, multiplier, timestamp) для симулятора
         try:
             new_spins = await self._fetch_new_spins()
             if new_spins:
@@ -93,16 +94,20 @@ class TracksParser:
                     if is_new:
                         saved += 1
                         self.db.clear_alert_history(result)
+                        # Получаем множитель
+                        data = spin.get("data") or spin
+                        outcome = (data.get("result") or {}).get("outcome") or {}
+                        multiplier = outcome.get("maxMultiplier")
+                        multiplier = float(multiplier) if multiplier else None
+                        spin_data.append((result, multiplier, timestamp))
                         if gap_before is not None:
                             if gap_before > 0:
                                 self.db.save_bonus_gap(gap_before)
+                                # Сохраняем afterbonus статистику
+                                self.db.save_after_series_bonus(result, gap_before, multiplier)
                             self.db.clear_alert_history("__bonus__")
-                            # Сохраняем множитель бонуса
-                            data = spin.get("data") or spin
-                            outcome = (data.get("result") or {}).get("outcome") or {}
-                            multiplier = outcome.get("maxMultiplier")
                             if multiplier:
-                                self.db.save_bonus_multiplier(result, float(multiplier), timestamp)
+                                self.db.save_bonus_multiplier(result, multiplier, timestamp)
                 logger.info(f"Saved: {saved}, skipped: {skipped}, total in DB: {self.db.get_total_spins()}")
                 if saved > 0:
                     alerts = self._check_all_thresholds()
@@ -111,7 +116,7 @@ class TracksParser:
         except Exception as e:
             self._consecutive_errors += 1
             logger.exception(f"Parser error: {e}")
-        return alerts
+        return alerts, spin_data
 
     async def _fetch_new_spins(self):
         last_known_id = self.db.get_last_spin_id()
