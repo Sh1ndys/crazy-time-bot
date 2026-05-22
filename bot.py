@@ -498,11 +498,11 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
     if db.sim_get("enabled") != "1":
         return
 
-    stake_base = float(db.sim_get("stake"))
-    num_bets = int(db.sim_get("num_bets"))
-    strategy = db.sim_get("strategy")
-    mg_mult = float(db.sim_get("mgale_mult"))
-    mg_steps = int(db.sim_get("martingale_steps"))
+    stake_base = float(db.sim_get("stake") or "100")
+    num_bets = int(db.sim_get("num_bets") or "10")
+    strategy = db.sim_get("strategy") or "flat"
+    mg_mult = float(db.sim_get("mgale_mult") or "2.0")
+    mg_steps = int(db.sim_get("martingale_steps") or "3")
     notifications = []
 
     # 1. Проверяем нужно ли открыть новые ставки (пороги только что пересечены)
