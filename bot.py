@@ -593,9 +593,10 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
                 db.sim_update_active_bet(bet_id, bets_remaining, current_stake, mg_step, total_spent)
                 db.sim_set_balance(balance)
 
-    # Отправляем уведомления
+    # Отправляем уведомления всем подписчикам
+    subscribers = db.get_all_subscribers()
     for note in notifications:
-        for chat_id in ADMIN_IDS:
+        for chat_id in subscribers:
             try:
                 await app.bot.send_message(chat_id=chat_id, text=note, parse_mode='Markdown')
             except Exception as e:
