@@ -413,8 +413,8 @@ async def sim_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         lines.append(f"\n  *За 24 часа:* {'✅ +' if profit24 >= 0 else '❌ '}{profit24:,.0f} ₽ ({h24['wins'] or 0}/{h24['total']})")
 
     if is_admin(update):
-        lines.append(f"\n_Настройка: /simset [параметр] [значение]_")
-        lines.append(f"_Параметры: balance, stake, num\\_bets, strategy (flat/martingale), mgale\\_mult, mgale\\_steps, enabled (0/1)_")
+        lines.append(f"\n_Настройка: /simset параметр значение_")
+        lines.append(f"_Параметры: balance, stake, num-bets, strategy (flat/martingale), mgale-mult, mgale-steps, enabled (0/1)_")
 
     await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
 
