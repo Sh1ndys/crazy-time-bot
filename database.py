@@ -107,6 +107,16 @@ class Database:
                 );
             """)
         logger.info(f"База данных инициализирована: {self.path}")
+        # Миграции — добавляем колонки если их нет
+        self._migrate()
+
+    def _migrate(self):
+        with self._conn() as conn:
+            try:
+                conn.execute("ALTER TABLE sim_active_bets ADD COLUMN total_spent REAL DEFAULT 0")
+                logger.info("Migration: added total_spent column")
+            except Exception:
+                pass  # колонка уже есть
 
     def init_default_thresholds(self):
         with self._conn() as conn:
