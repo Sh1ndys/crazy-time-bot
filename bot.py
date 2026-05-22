@@ -461,28 +461,8 @@ async def simreset_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("❌ Только администратор.")
         return
-    keyboard = [[
-        InlineKeyboardButton("✅ Сбросить", callback_data="simreset_confirm"),
-        InlineKeyboardButton("❌ Отмена", callback_data="simreset_cancel"),
-    ]]
-    await update.message.reply_text(
-        "⚠️ Сбросить историю ставок и активные ставки симулятора?\n_(баланс и настройки сохранятся)_",
-        parse_mode='Markdown',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def simreset_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.from_user.id not in ADMIN_IDS:
-        await query.answer("❌ Только администратор.", show_alert=True)
-        return
-    await query.answer()
-    if query.data == "simreset_confirm":
-        db.sim_reset()
-        await query.message.edit_text("✅ Симулятор сброшен. История и активные ставки удалены.")
-    else:
-        await query.message.edit_text("❌ Отмена.")
+    db.sim_reset()
+    await update.message.reply_text("✅ Симулятор сброшен. История и активные ставки удалены.")
 
 
 # ── ЛОГИКА СИМУЛЯТОРА ─────────────────────────────────────────────────────────
@@ -696,7 +676,6 @@ def main():
     app.add_handler(CommandHandler("simreset", simreset_cmd))
     app.add_handler(CallbackQueryHandler(event_callback, pattern="^event_"))
     app.add_handler(CallbackQueryHandler(reset_callback, pattern="^reset_"))
-    app.add_handler(CallbackQueryHandler(simreset_callback, pattern="^simreset_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_handler))
     logger.info("Bot started")
     app.run_polling(drop_pending_updates=True)
