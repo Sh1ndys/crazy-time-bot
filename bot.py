@@ -538,6 +538,7 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
         current_stake = bet['current_stake']
         bets_remaining = bet['bets_remaining']
         mg_step = bet['martingale_step']
+        total_spent = bet.get('total_spent', 0)
         bet_id = bet['id']
 
         # Определяем попадание
@@ -550,22 +551,24 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
 
         # Списываем ставку
         balance -= actual_stake
+        total_spent += actual_stake
 
         if hit:
-            # Выигрыш
+            # Выигрыш — прибыль с учётом ВСЕХ потраченных ставок на эту серию
             mult = sim_get_multiplier(result, raw_mult)
             winnings = current_stake * mult
-            profit = winnings - actual_stake
+            real_profit = winnings - total_spent
             balance += winnings
             db.sim_set_balance(balance)
-            db.sim_add_history(bet_event, actual_stake, "win", profit, mult)
+            db.sim_add_history(bet_event, total_spent, "win", real_profit, mult)
             db.sim_remove_active_bet(bet_id)
             icon = ICONS.get(result, "🎡")
+            profit_str = f"+{real_profit:,.0f}" if real_profit >= 0 else f"{real_profit:,.0f}"
             notifications.append(
                 f"✅ *Симулятор: ВЫИГРЫШ!*\n"
                 f"{icon} *{result}* выпал с множителем ×{mult:.0f}\n"
-                f"Ставка: {actual_stake:,.0f} ₽ → Выигрыш: {winnings:,.0f} ₽\n"
-                f"Прибыль: *+{profit:,.0f} ₽*\n"
+                f"Потрачено: {total_spent:,.0f} ₽ → Выигрыш: {winnings:,.0f} ₽\n"
+                f"Чистая прибыль: *{profit_str} ₽*\n"
                 f"💰 Баланс: *{balance:,.0f} ₽*"
             )
         else:
@@ -575,28 +578,30 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
                 if strategy == "martingale" and mg_step < mg_steps:
                     # Следующий шаг мартингейла
                     new_stake = current_stake * mg_mult
-                    db.sim_update_active_bet(bet_id, num_bets, new_stake, mg_step + 1)
+                    db.sim_update_active_bet(bet_id, num_bets, new_stake, mg_step + 1, total_spent)
                     db.sim_set_balance(balance)
                     event_name = "все бонусы" if bet_event == "__bonus__" else bet_event
                     notifications.append(
                         f"🔄 *Симулятор: мартингейл шаг {mg_step+1}*\n"
                         f"_{event_name}_ не выпал за {num_bets} ставок\n"
                         f"Новая ставка: {new_stake:,.0f} ₽ (×{mg_mult})\n"
+                        f"Потрачено за серию: {total_spent:,.0f} ₽\n"
                         f"💰 Баланс: *{balance:,.0f} ₽*"
                     )
                 else:
-                    # Стоп
-                    db.sim_add_history(bet_event, actual_stake, "loss", -actual_stake * (num_bets + mg_step * num_bets), None)
+                    # Стоп — записываем реальный убыток
+                    db.sim_add_history(bet_event, total_spent, "loss", -total_spent, None)
                     db.sim_remove_active_bet(bet_id)
                     db.sim_set_balance(balance)
                     event_name = "все бонусы" if bet_event == "__bonus__" else bet_event
                     notifications.append(
                         f"❌ *Симулятор: серия проиграна*\n"
                         f"_{event_name}_ не выпал за все ставки\n"
+                        f"Убыток: -{total_spent:,.0f} ₽\n"
                         f"💰 Баланс: *{balance:,.0f} ₽*"
                     )
             else:
-                db.sim_update_active_bet(bet_id, bets_remaining, current_stake, mg_step)
+                db.sim_update_active_bet(bet_id, bets_remaining, current_stake, mg_step, total_spent)
                 db.sim_set_balance(balance)
 
     # Отправляем уведомления

@@ -92,6 +92,7 @@ class Database:
                     current_stake   REAL NOT NULL,
                     bets_remaining  INTEGER NOT NULL,
                     martingale_step INTEGER NOT NULL DEFAULT 0,
+                    total_spent     REAL NOT NULL DEFAULT 0,
                     triggered_at    DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -384,19 +385,25 @@ class Database:
             rows = conn.execute("SELECT * FROM sim_active_bets").fetchall()
         return [dict(r) for r in rows]
 
-    def sim_add_active_bet(self, event: str, stake: float, bets_remaining: int, martingale_step: int = 0):
+    def sim_add_active_bet(self, event: str, stake: float, bets_remaining: int, martingale_step: int = 0, total_spent: float = 0):
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO sim_active_bets (event, current_stake, bets_remaining, martingale_step) VALUES (?, ?, ?, ?)",
-                (event, stake, bets_remaining, martingale_step)
+                "INSERT INTO sim_active_bets (event, current_stake, bets_remaining, martingale_step, total_spent) VALUES (?, ?, ?, ?, ?)",
+                (event, stake, bets_remaining, martingale_step, total_spent)
             )
 
-    def sim_update_active_bet(self, bet_id: int, bets_remaining: int, current_stake: float, martingale_step: int):
+    def sim_update_active_bet(self, bet_id: int, bets_remaining: int, current_stake: float, martingale_step: int, total_spent: float = None):
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE sim_active_bets SET bets_remaining=?, current_stake=?, martingale_step=? WHERE id=?",
-                (bets_remaining, current_stake, martingale_step, bet_id)
-            )
+            if total_spent is not None:
+                conn.execute(
+                    "UPDATE sim_active_bets SET bets_remaining=?, current_stake=?, martingale_step=?, total_spent=? WHERE id=?",
+                    (bets_remaining, current_stake, martingale_step, total_spent, bet_id)
+                )
+            else:
+                conn.execute(
+                    "UPDATE sim_active_bets SET bets_remaining=?, current_stake=?, martingale_step=? WHERE id=?",
+                    (bets_remaining, current_stake, martingale_step, bet_id)
+                )
 
     def sim_remove_active_bet(self, bet_id: int):
         with self._conn() as conn:
