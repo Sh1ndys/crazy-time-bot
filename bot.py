@@ -485,12 +485,19 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
     mg_steps = int(db.sim_get("martingale_steps") or "3")
     notifications = []
 
+    # 0. Снимаем cooldown если событие выпало
+    if result in BONUS_EVENTS:
+        db.sim_remove_cooldown("__bonus__")
+        db.sim_remove_cooldown(result)
+    else:
+        db.sim_remove_cooldown(result)
+
     # 1. Проверяем нужно ли открыть новые ставки (пороги только что пересечены)
     # Для отдельных событий
     for event in list(EVENTS):
         threshold = thresholds.get(event, 9999)
         absence = absences.get(event, 0)
-        if absence >= threshold and not db.sim_has_active_bet(event):
+        if absence >= threshold and not db.sim_has_active_bet(event) and not db.sim_in_cooldown(event):
             db.sim_add_active_bet(event, stake_base, num_bets)
             icon = ICONS.get(event, "🎡")
             notifications.append(
@@ -501,7 +508,7 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
 
     # Для серии без бонусов
     bonus_threshold = thresholds.get("__bonus__", 30)
-    if bonus_absence >= bonus_threshold and not db.sim_has_active_bet("__bonus__"):
+    if bonus_absence >= bonus_threshold and not db.sim_has_active_bet("__bonus__") and not db.sim_in_cooldown("__bonus__"):
         db.sim_add_active_bet("__bonus__", stake_base, num_bets)
         notifications.append(
             f"🎮 *Симулятор запускает ставки*\n"
@@ -569,16 +576,18 @@ async def sim_process_spin(app, result: str, raw_mult: float | None, thresholds:
                         f"💰 Баланс: *{balance:,.0f} ₽*"
                     )
                 else:
-                    # Стоп — записываем реальный убыток
+                    # Стоп — записываем реальный убыток и добавляем в cooldown
                     db.sim_add_history(bet_event, total_spent, "loss", -total_spent, None)
                     db.sim_remove_active_bet(bet_id)
+                    db.sim_add_cooldown(bet_event)
                     db.sim_set_balance(balance)
                     event_name = "все бонусы" if bet_event == "__bonus__" else bet_event
                     notifications.append(
                         f"❌ *Симулятор: серия проиграна*\n"
                         f"_{event_name}_ не выпал за все ставки\n"
                         f"Убыток: -{total_spent:,.0f} ₽\n"
-                        f"💰 Баланс: *{balance:,.0f} ₽*"
+                        f"💰 Баланс: *{balance:,.0f} ₽*\n"
+                        f"_Ждём выпадения события для следующей серии_"
                     )
             else:
                 db.sim_update_active_bet(bet_id, bets_remaining, current_stake, mg_step, total_spent)

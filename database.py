@@ -105,6 +105,10 @@ class Database:
                     multiplier REAL,
                     timestamp  DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS sim_cooldown (
+                    event TEXT PRIMARY KEY
+                );
             """)
         logger.info(f"База данных инициализирована: {self.path}")
         # Миграции — добавляем колонки если их нет
@@ -116,7 +120,12 @@ class Database:
                 conn.execute("ALTER TABLE sim_active_bets ADD COLUMN total_spent REAL DEFAULT 0")
                 logger.info("Migration: added total_spent column")
             except Exception:
-                pass  # колонка уже есть
+                pass
+            try:
+                conn.execute("CREATE TABLE IF NOT EXISTS sim_cooldown (event TEXT PRIMARY KEY)")
+                logger.info("Migration: created sim_cooldown table")
+            except Exception:
+                pass
 
     def init_default_thresholds(self):
         with self._conn() as conn:
@@ -459,3 +468,17 @@ class Database:
         with self._conn() as conn:
             conn.execute("DELETE FROM sim_active_bets")
             conn.execute("DELETE FROM sim_history")
+            conn.execute("DELETE FROM sim_cooldown")
+
+    def sim_add_cooldown(self, event: str):
+        with self._conn() as conn:
+            conn.execute("INSERT OR IGNORE INTO sim_cooldown (event) VALUES (?)", (event,))
+
+    def sim_remove_cooldown(self, event: str):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM sim_cooldown WHERE event = ?", (event,))
+
+    def sim_in_cooldown(self, event: str) -> bool:
+        with self._conn() as conn:
+            row = conn.execute("SELECT 1 FROM sim_cooldown WHERE event = ?", (event,)).fetchone()
+        return row is not None
